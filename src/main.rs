@@ -31,7 +31,7 @@ impl EventHandler for Handler {
                 "pause" => commands::pause::run(&command, &ctx).await,
                 "resume" => commands::resume::run(&command, &ctx).await,
                 "repeat" => commands::repeat::run(&command, &ctx).await,
-                _ => panic!(),
+                _ => {},
             };
         }
     }
