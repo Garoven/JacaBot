@@ -1,0 +1,12 @@
+{
+	"discord" : {
+		"token": "",
+		"guilds_ids": [
+			123456789
+		]
+	},
+	"spotify": {
+		"client_id": "",
+		"client_secret": ""
+	}
+}
