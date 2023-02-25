@@ -7,10 +7,11 @@ use serenity::{
 use super::send_msg;
 
 pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
-    let cache = &ctx.cache;
-
-    let guild_id = interaction.guild_id.expect("Not in channel");
-    let guild = cache.guild(guild_id).unwrap();
+    let guild_id = interaction.guild_id.unwrap();
+    let guild = ctx
+        .cache
+        .guild(guild_id)
+        .unwrap();
 
     let user_id = interaction.user.id;
 

@@ -37,6 +37,12 @@ impl EventHandler for SongStart {
                     None => metadata.channel.unwrap(),
                 }
             );
+            let duration = metadata.duration.unwrap_or(Duration::from_secs(0)).as_secs();
+            let minutes_dur = duration / 60;
+            let mut seconds_dur = (duration - minutes_dur * 60).to_string();
+            if seconds_dur.len() == 1 {
+                seconds_dur = "0".to_string() + &seconds_dur;
+            }
 
             let message = self
                 .channel_id
@@ -45,7 +51,11 @@ impl EventHandler for SongStart {
                         embed
                             .title(title)
                             .thumbnail(metadata.thumbnail.unwrap())
-                            .description("⚪⚪⚪⚪⚪⚪⚪⚪⚪⚪ - `0:00`")
+                            .description(format!(
+                                    "⚪⚪⚪⚪⚪⚪⚪⚪⚪⚪ - `0:00/{}:{}`"
+                                    , minutes_dur,
+                                    seconds_dur)
+                                )
                             .colour(16711937)
                     })
                 })
@@ -118,6 +128,13 @@ impl EventHandler for Nowplaying {
                         None => metadata.channel.unwrap(),
                     }
                 );
+                let duration = metadata.duration.unwrap_or(Duration::from_secs(0)).as_secs();
+                let minutes_dur = duration / 60;
+                let mut seconds_dur = (duration - minutes_dur * 60).to_string();
+                if seconds_dur.len() == 1 {
+                    seconds_dur = "0".to_string() + &seconds_dur;
+                }
+
                 let minutes = state.position.as_secs() / 60;
                 let mut seconds = (state.position.as_secs() - minutes * 60).to_string();
 
@@ -130,10 +147,12 @@ impl EventHandler for Nowplaying {
                     .title(title)
                     .thumbnail(metadata.thumbnail.unwrap())
                     .description(format!(
-                        "{} - `{}:{}`",
+                        "{} - `{}:{}/{}:{}`",
                         time_bar(state.position, metadata.duration.unwrap()),
                         minutes,
                         seconds,
+                        minutes_dur,
+                        seconds_dur
                     ))
                     .colour(16711937);
 

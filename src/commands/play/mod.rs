@@ -1,15 +1,16 @@
 use serenity::{
     builder::CreateApplicationCommand,
-    model::prelude::interaction::application_command::ApplicationCommandInteraction,
+    model::{prelude::interaction::application_command::ApplicationCommandInteraction, user::User},
     prelude::Context,
 };
 
-use songbird::{create_player, input::Restartable, Event};
+use songbird::{create_player, input::{Restartable, Metadata}, Event};
 
 use super::send_msg;
-use crate::commands::edit_msg;
+use crate::{commands::edit_msg, log, Log};
 use std::time::Duration;
 
+mod rustube;
 mod events;
 mod spotify;
 mod youtube;
@@ -27,7 +28,8 @@ pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
         .unwrap()
         .to_string();
 
-    let user_id = interaction.user.id;
+    let user = &interaction.user;
+    let user_id = user.id;
     let guild_id = interaction.guild_id.expect("Not in channel");
     let guild = cache.guild(guild_id).unwrap();
 
@@ -51,16 +53,25 @@ pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
                     false => youtube::playlist(&uri),
                 };
                 if let Some(vec) = playlist {
-                    edit_msg(ctx, interaction, &format!("Adding {} songs", vec.len())).await;
-                    for song in vec {
+                    let mut msg = edit_msg(ctx, interaction, &format!("Found {} songs", vec.len())).await;
+                    let len = vec.len();
+                    let mut succes = 0; 
+                    let mut failed = 0;
+                    for (index, song) in vec.into_iter().enumerate() {
                         let source = match song.contains("https://") {
-                            true => match Restartable::ytdl(song, true).await {
+                            true => match rustube::rustube(song, true).await {
                                 Ok(src) => src,
-                                Err(_) => continue,
+                                Err(_) => {
+                                    failed += 1;
+                                    continue
+                                },
                             },
                             false => match Restartable::ytdl_search(song, true).await {
                                 Ok(src) => src,
-                                Err(_) => continue,
+                                Err(_) => {
+                                    failed += 1;
+                                    continue
+                                }
                             },
                         };
 
@@ -71,15 +82,22 @@ pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
                                 SongStart::new(interaction.channel_id, ctx.http.clone()),
                             )
                             .unwrap();
+                        
+                        let metadata = track_handle.metadata().clone();
+                        succes += 1;
+                        let msg_content = format!("`Loading... {}/{}`\n`Ok: {} | Failed: {}`", index+1, len, succes , failed);
+                        let content = get_msg(metadata, user);
+                        log(&content, Log::Info());
 
                         let mut handler = handler_lock.lock().await;
                         handler.join(voice_channel).await.unwrap();
                         handler.enqueue(track);
+                        msg.edit(ctx.http.clone(), |m| m.content(msg_content)).await.unwrap();
                     }
                 } else {
-                    send_msg(ctx, interaction, "Invalid url").await
+                    edit_msg(ctx, interaction, "Invalid url").await;
                 }
-            } else if let Ok(source) = Restartable::ytdl(uri, true).await {
+            } else if let Ok(source) = rustube::rustube(uri, true).await {
                 let (track, track_handle) = create_player(source.into());
                 track_handle
                     .add_event(
@@ -89,22 +107,16 @@ pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
                     .unwrap();
 
                 let metadata = track_handle.metadata().clone();
-                let content = format!(
-                    "Added `{}` by `{}`",
-                    metadata.title.unwrap(),
-                    match metadata.artist {
-                        Some(name) => name,
-                        None => metadata.channel.unwrap(),
-                    }
-                );
+                let content = get_msg(metadata, user);
+                log(&content, Log::Info());
 
                 let mut handler = handler_lock.lock().await;
                 handler.join(voice_channel).await.unwrap();
                 handler.enqueue(track);
 
-                edit_msg(ctx, interaction, &content).await
+                edit_msg(ctx, interaction, &content).await;
             } else {
-                send_msg(ctx, interaction, "Nothing found").await
+                edit_msg(ctx, interaction, "Nothing found").await;
             }
         } else if let Ok(source) = Restartable::ytdl_search(uri, true).await {
             let (track, track_handle) = create_player(source.into());
@@ -116,22 +128,16 @@ pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
                 .unwrap();
 
             let metadata = track_handle.metadata().clone();
-            let content = format!(
-                "Added `{}` by `{}`",
-                metadata.title.unwrap(),
-                match metadata.artist {
-                    Some(name) => name,
-                    None => metadata.channel.unwrap(),
-                }
-            );
+            let content = get_msg(metadata, user);
+            log(&content, Log::Info());
 
             let mut handler = handler_lock.lock().await;
             handler.join(voice_channel).await.unwrap();
             handler.enqueue(track);
 
-            edit_msg(ctx, interaction, &content).await
+            edit_msg(ctx, interaction, &content).await;
         } else {
-            send_msg(ctx, interaction, "Nothing found").await
+            edit_msg(ctx, interaction, "Nothing found").await;
         }
     } else {
         send_msg(ctx, interaction, "Not in voice channel").await
@@ -149,4 +155,17 @@ pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicatio
                 .kind(serenity::model::prelude::command::CommandOptionType::String)
                 .required(true)
         })
+}
+
+fn get_msg(metadata: Metadata, user: &User) -> String {
+    let content = format!(
+        "{} added `{}` by `{}`",
+        user.name,
+        metadata.title.unwrap(),
+        match metadata.artist {
+            Some(name) => name,
+            None => metadata.channel.unwrap(),
+        }
+    );
+    content
 }

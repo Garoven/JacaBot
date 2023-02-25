@@ -8,6 +8,7 @@ use super::send_msg;
 
 pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
     send_msg(ctx, interaction, "I'm alive").await;
+
 }
 
 pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {

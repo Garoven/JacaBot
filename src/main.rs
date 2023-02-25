@@ -1,21 +1,15 @@
-use std::{collections::HashMap, fs::read_to_string, time::Duration};
+use std::time::Duration;
 
 use serenity::{
     async_trait,
-    model::{application::interaction::Interaction, gateway::Ready, prelude::GuildId},
+    model::{application::interaction::Interaction, gateway::Ready, prelude::{GuildId, Message, RoleId, ReactionType, EmojiId}},
     prelude::{Client, Context, EventHandler, GatewayIntents},
 };
 
-use once_cell::sync::Lazy;
 use songbird::SerenityInit;
 
+mod config;
 mod commands;
-
-static DISCORD_DATA: Lazy<serde_json::Value> = Lazy::new(|| {
-    let json = read_to_string("./config.json").unwrap();
-    let data: HashMap<String, serde_json::Value> = serde_json::from_str(&json).unwrap();
-    data.get("discord").unwrap().to_owned()
-});
 
 struct Handler;
 
@@ -31,23 +25,24 @@ impl EventHandler for Handler {
                 "pause" => commands::pause::run(&command, &ctx).await,
                 "resume" => commands::resume::run(&command, &ctx).await,
                 "repeat" => commands::repeat::run(&command, &ctx).await,
-                _ => {},
+                _ => {}
             };
+        }
+    }
+    async fn message(&self, ctx: Context, msg: Message) {
+        if msg.mention_roles.contains(&RoleId::from(749235591299727461)) || msg.content.to_lowercase().contains("sus") || msg.content.to_lowercase().contains("among us") {
+            msg.react(ctx.http.clone(), ReactionType::Custom { animated: false, id: EmojiId::from(1050836873762852974), name: Some("sus".to_string()) }).await.unwrap();
         }
     }
     async fn ready(&self, ctx: Context, ready: Ready) {
         tokio::time::sleep(Duration::from_secs(2)).await;
-        println!("{} is connected!", ready.user.name);
+        log(&format!("{} is connected!", ready.user.name), Log::Info());
 
-        let guilds_ids = DISCORD_DATA.get("guilds_ids").unwrap().as_array().unwrap();
+        let guilds_ids = config::DISCORD_CONFIG.get("guilds_ids").unwrap().as_array().unwrap();
 
-        println!("Added guilds:");
+        log(&format!("Added {} guilds", guilds_ids.len()), Log::Info());
         for guild_id in guilds_ids {
             let guild_id = GuildId(guild_id.as_u64().unwrap());
-            let guild_name = guild_id
-                .name(&ctx.cache)
-                .unwrap_or_else(|| "None".to_string());
-            println!("  {} - {},", guild_name, guild_id);
 
             GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
                 commands
@@ -67,9 +62,13 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
-    let token = DISCORD_DATA.get("token").unwrap().as_str().unwrap();
+    let token = config::DISCORD_CONFIG.get("token").unwrap().as_str().unwrap();
 
-    let intents = GatewayIntents::GUILDS | GatewayIntents::GUILD_VOICE_STATES;
+    let intents = GatewayIntents::GUILDS
+        | GatewayIntents::GUILD_VOICE_STATES
+        | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT;
 
     let mut client = Client::builder(token, intents)
         .event_handler(Handler)
@@ -78,6 +77,27 @@ async fn main() {
         .expect("Error creating client");
 
     if let Err(why) = client.start().await {
-        println!("Client error: {:?}", why);
+        log(&format!("Client error: {why:?}"), Log::Error());
     }
+}
+
+enum Log {
+    Info(),
+    Warn(),
+    Error()
+}
+
+impl Log {
+    fn get(&self) -> String {
+        match &self {
+            Log::Info() => "Info".to_string(),
+            Log::Warn() => "Warn".to_string(),
+            Log::Error() => "Error".to_string(),
+        }
+    }
+}
+
+fn log(msg: &str, log_type: Log) {
+    let time = chrono::Local::now().format("%d-%m-%Y %H:%M:%S");
+    println!("[{time}][{}] {msg}", log_type.get())
 }

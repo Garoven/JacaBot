@@ -1,19 +1,13 @@
+use crate::config;
+
 use reqwest::{header::HeaderValue, Method, Url};
 use rspotify::{ClientCredsSpotify, Credentials};
 
-use once_cell::sync::Lazy;
 use serde_json::Value;
-use std::{collections::HashMap, fs::read_to_string};
-
-static SPOTIFY_DATA: Lazy<serde_json::Value> = Lazy::new(|| {
-    let json = read_to_string("./config.json").unwrap();
-    let data: HashMap<String, serde_json::Value> = serde_json::from_str(&json).unwrap();
-    data.get("spotify").unwrap().to_owned()
-});
 
 async fn auth() -> String {
-    let client_id = SPOTIFY_DATA.get("client_id").unwrap().as_str().unwrap();
-    let client_secret = SPOTIFY_DATA.get("client_secret").unwrap().as_str().unwrap();
+    let client_id = config::SPOTIFY_CONFIG.get("client_id").unwrap().as_str().unwrap();
+    let client_secret = config::SPOTIFY_CONFIG.get("client_secret").unwrap().as_str().unwrap();
     let credentials = Credentials::new(client_id, client_secret);
 
     let request = ClientCredsSpotify::new(credentials);
