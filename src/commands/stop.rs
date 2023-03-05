@@ -8,22 +8,7 @@ use super::send_msg;
 
 pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
     let guild_id = interaction.guild_id.unwrap();
-    let guild = ctx
-        .cache
-        .guild(guild_id)
-        .unwrap();
-
-    let user_id = interaction.user.id;
-
-    let voice_channel = guild
-        .voice_states
-        .get(&user_id)
-        .and_then(|voice_state| voice_state.channel_id);
-
-    if voice_channel.is_none() {
-        return send_msg(ctx, interaction, "Not in voice channel").await;
-    }
-
+    let guild = ctx.cache.guild(guild_id).unwrap();
     let menager = songbird::get(ctx)
         .await
         .expect("Failed to get manager")
@@ -31,33 +16,34 @@ pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
 
     let handler_lock = match menager.get(guild_id) {
         Some(handler) => handler,
-        None => return send_msg(ctx, interaction, "Nothing to stop").await,
+        None => return send_msg(ctx, interaction, "Bot is not connected to voice channel").await,
     };
     let handler = handler_lock.lock().await;
 
-    if handler.current_channel().is_none() {
-        return send_msg(ctx, interaction, "Nothing to stop").await;
-    }
+    let voice_channel = match guild
+        .voice_states
+        .get(&interaction.user.id)
+        .and_then(|voice_state| voice_state.channel_id) 
+    {
+        Some(v) => v.0,                                                                              
+        None => return send_msg(ctx, interaction, "You are not connected to voice channel").await
+    };
+    let bot_voice_channel = match handler.current_channel() {
+        Some(v) => v.0,
+        None => return send_msg(ctx, interaction, "Bot is not connected to voice channel").await
+        
+    };
 
-    if voice_channel.unwrap().0 == handler.current_channel().unwrap().0 {
-        if handler.queue().current().is_some() {
-            handler.queue().stop();
-            send_msg(
-                ctx,
-                interaction,
-                "Successfully stoped song and cleared queue",
-            )
-            .await
-        } else {
-            send_msg(ctx, interaction, "Nothing to stop").await
-        }
+    if voice_channel == bot_voice_channel {
+        handler.queue().stop();
+        send_msg(ctx, interaction, "Cleared queue").await
     } else {
-        send_msg(ctx, interaction, "Not in bot voice channel").await
+        send_msg(ctx, interaction, "You are not connected to voice channel with bot").await
     }
 }
 
 pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
     command
         .name("stop")
-        .description("stop current song and clear queue")
+        .description("Stop current song and clear queue")
 }

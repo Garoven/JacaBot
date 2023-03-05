@@ -1,14 +1,23 @@
-use std::time::Duration;
+#![feature(once_cell)]
+use log::{error, info, warn};
+use std::{
+    time::Duration,
+    process::exit
+};
 
 use serenity::{
     async_trait,
-    model::{application::interaction::Interaction, gateway::Ready, prelude::{GuildId, Message, RoleId, ReactionType, EmojiId}},
+    model::{
+        application::interaction::Interaction,
+        gateway::Ready,
+        prelude::{GuildId, Message, RoleId, ReactionType, EmojiId}},
     prelude::{Client, Context, EventHandler, GatewayIntents},
 };
 
 use songbird::SerenityInit;
 
 mod config;
+mod errors;
 mod commands;
 
 struct Handler;
@@ -31,20 +40,33 @@ impl EventHandler for Handler {
     }
     async fn message(&self, ctx: Context, msg: Message) {
         if msg.mention_roles.contains(&RoleId::from(749235591299727461)) || msg.content.to_lowercase().contains("sus") || msg.content.to_lowercase().contains("among us") {
-            msg.react(ctx.http.clone(), ReactionType::Custom { animated: false, id: EmojiId::from(1050836873762852974), name: Some("sus".to_string()) }).await.unwrap();
+            if let Err(e) = msg.react(ctx.http.clone(), ReactionType::Custom { animated: false, id: EmojiId::from(1050836873762852974), name: Some("sus".to_string()) }).await {
+                warn!("{e}");
+            };
         }
     }
     async fn ready(&self, ctx: Context, ready: Ready) {
         tokio::time::sleep(Duration::from_secs(2)).await;
-        log(&format!("{} is connected!", ready.user.name), Log::Info());
+        info!("{} is connected!", ready.user.name);
 
-        let guilds_ids = config::DISCORD_CONFIG.get("guilds_ids").unwrap().as_array().unwrap();
-
-        log(&format!("Added {} guilds", guilds_ids.len()), Log::Info());
+        let guilds_ids = match config::DISCORD_CONFIG.get("guilds_ids").and_then(|g| g.as_array()) {
+            Some(g) => g,
+            None => {
+                warn!("Cannot get guilds_ids. Invaild config?");
+                return;
+            }
+        };
+        info!("Adding {} guilds", guilds_ids.len());
         for guild_id in guilds_ids {
-            let guild_id = GuildId(guild_id.as_u64().unwrap());
+            let guild_id = GuildId(match guild_id.as_u64() {
+                Some(id) => id,
+                None => {
+                    warn!("Cannot get GuildId. Not a number?");
+                    continue
+                }
+            });
 
-            GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
+            if let Err(e) = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
                 commands
                     .create_application_command(|command| commands::ping::register(command))
                     .create_application_command(|command| commands::play::register(command))
@@ -55,14 +77,23 @@ impl EventHandler for Handler {
                     .create_application_command(|command| commands::repeat::register(command))
             })
             .await
-            .unwrap();
+            {
+                warn!("{e}");
+            };
         }
     }
 }
 
 #[tokio::main]
 async fn main() {
-    let token = config::DISCORD_CONFIG.get("token").unwrap().as_str().unwrap();
+    env_logger::init();
+    let token = match config::DISCORD_CONFIG.get("token").and_then(|t| t.as_str()) {
+        Some(t) => t,
+        None => {
+            error!("Cannot get token. No token in config file?");
+            exit(1)
+        }
+    };
 
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_VOICE_STATES
@@ -70,34 +101,19 @@ async fn main() {
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT;
 
-    let mut client = Client::builder(token, intents)
+    let mut client = match Client::builder(token, intents)
         .event_handler(Handler)
         .register_songbird()
         .await
-        .expect("Error creating client");
+    {
+        Ok(c) => c,
+        Err(e) => {
+            error!("{e}");
+            exit(1)
+        }
+    };
 
     if let Err(why) = client.start().await {
-        log(&format!("Client error: {why:?}"), Log::Error());
+        error!("Client error: {why}");
     }
-}
-
-enum Log {
-    Info(),
-    Warn(),
-    Error()
-}
-
-impl Log {
-    fn get(&self) -> String {
-        match &self {
-            Log::Info() => "Info".to_string(),
-            Log::Warn() => "Warn".to_string(),
-            Log::Error() => "Error".to_string(),
-        }
-    }
-}
-
-fn log(msg: &str, log_type: Log) {
-    let time = chrono::Local::now().format("%d-%m-%Y %H:%M:%S");
-    println!("[{time}][{}] {msg}", log_type.get())
 }

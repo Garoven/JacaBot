@@ -1,0 +1,4 @@
+enum _Error {
+    NotInVoice,
+
+}

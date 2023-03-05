@@ -1,11 +1,10 @@
+use log::warn;
 use serenity::{
     model::prelude::{interaction::{
         application_command::ApplicationCommandInteraction, InteractionResponseType,
     }, Message},
     prelude::Context,
 };
-
-use crate::{log, Log};
 
 pub mod pause;
 pub mod ping;
@@ -24,7 +23,7 @@ async fn send_msg(ctx: &Context, interaction: &ApplicationCommandInteraction, co
         })
         .await
     {
-        log(&format!("Cannot respond to slash command: {why}"), Log::Warn());
+        warn!("Cannot respond to slash command: {why}");
     }
 }
 

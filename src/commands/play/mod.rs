@@ -4,10 +4,11 @@ use serenity::{
     prelude::Context,
 };
 
-use songbird::{create_player, input::{Restartable, Metadata}, Event};
+use log::trace;
+use songbird::{create_player, input::Metadata, Event};
 
 use super::send_msg;
-use crate::{commands::edit_msg, log, Log};
+use crate::commands::edit_msg;
 use std::time::Duration;
 
 mod rustube;
@@ -50,7 +51,7 @@ pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
             if uri.contains("playlist") {
                 let playlist = match uri.contains("spotify") {
                     true => spotify::playlist(&uri).await,
-                    false => youtube::playlist(&uri),
+                    false => Some(rustube::get_playlist(&uri).await.links),
                 };
                 if let Some(vec) = playlist {
                     let mut msg = edit_msg(ctx, interaction, &format!("Found {} songs", vec.len())).await;
@@ -66,7 +67,7 @@ pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
                                     continue
                                 },
                             },
-                            false => match Restartable::ytdl_search(song, true).await {
+                            false => match rustube::rustube_search(song, true).await {
                                 Ok(src) => src,
                                 Err(_) => {
                                     failed += 1;
@@ -87,7 +88,7 @@ pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
                         succes += 1;
                         let msg_content = format!("`Loading... {}/{}`\n`Ok: {} | Failed: {}`", index+1, len, succes , failed);
                         let content = get_msg(metadata, user);
-                        log(&content, Log::Info());
+                        trace!("{content}");
 
                         let mut handler = handler_lock.lock().await;
                         handler.join(voice_channel).await.unwrap();
@@ -108,7 +109,7 @@ pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
 
                 let metadata = track_handle.metadata().clone();
                 let content = get_msg(metadata, user);
-                log(&content, Log::Info());
+                trace!("{content}");
 
                 let mut handler = handler_lock.lock().await;
                 handler.join(voice_channel).await.unwrap();
@@ -118,7 +119,7 @@ pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
             } else {
                 edit_msg(ctx, interaction, "Nothing found").await;
             }
-        } else if let Ok(source) = Restartable::ytdl_search(uri, true).await {
+        } else if let Ok(source) = rustube::rustube_search(uri, true).await {
             let (track, track_handle) = create_player(source.into());
             track_handle
                 .add_event(
@@ -129,7 +130,7 @@ pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
 
             let metadata = track_handle.metadata().clone();
             let content = get_msg(metadata, user);
-            log(&content, Log::Info());
+            trace!("{content}");
 
             let mut handler = handler_lock.lock().await;
             handler.join(voice_channel).await.unwrap();

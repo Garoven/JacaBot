@@ -7,7 +7,7 @@ use serenity::{
 use super::send_msg;
 
 pub async fn run(interaction: &ApplicationCommandInteraction, ctx: &Context) {
-    send_msg(ctx, interaction, "I'm alive").await;
+    send_msg(ctx, interaction, "I'm alive :)").await;
 
 }
 

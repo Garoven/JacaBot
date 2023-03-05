@@ -1,6 +1,6 @@
 use std::process::{Command, Stdio};
 
-pub fn playlist(uri: &str) -> Option<Vec<String>> {
+pub fn _playlist(uri: &str) -> Option<Vec<String>> {
     if let Ok(output) = Command::new("youtube-dl")
         .args([
             "-f",
